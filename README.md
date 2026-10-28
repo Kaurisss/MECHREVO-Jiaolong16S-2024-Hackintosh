@@ -2,7 +2,7 @@
 
 适用于机械革命蛟龙 16S（GM6XG0X），AMD Ryzen 9 7940HS + NVIDIA GeForce RTX 4060 Laptop GPU。
 
-这份 EFI 已由机主在 macOS 实机上长期测试，作为本机日用配置。下表记录已完成的功能测试；macOS 具体测试版本待补充。
+这份 EFI 已由机主在 macOS 26 实机上长期测试，作为本机日用配置。下表记录已完成的功能测试。
 
 ## 硬件与配置
 
@@ -24,7 +24,8 @@
 
 | 功能 | 状态 | 说明 |
 | --- | --- | --- |
-| NVIDIA 独显 | 正常 | 使用 NullMoth NVIDIA Driver，可识别显卡并显示 Metal 支持 |
+| 图形启动菜单 | 已配置 | OpenCanopy + GoldenGate 主题 |
+| NVIDIA 独显 | 显示正常 | 使用 NullMoth NVIDIA Driver，显卡可识别，图形加速与系统动画正常；命令行查询未报告 Metal 支持 |
 | Wi-Fi | 正常 | 使用 `AirportItlwm.kext`，系统原生 Wi-Fi 菜单可用 |
 | 定位 | 正常 | 已实测定位功能 |
 | 蓝牙 | 正常 | 已测试连接 AirPods |
@@ -40,6 +41,20 @@
 | 摄像头 | 未测试 | 待验证 |
 
 ## 关键驱动与修复
+
+### 图形启动菜单
+
+使用 `OpenCore-1.0.8-RELEASE` 包中的 `OpenCanopy.efi`，搭配现有 GoldenGate 主题资源：
+
+- `Misc → Boot → PickerMode`：`External`。
+- `Misc → Boot → PickerVariant`：`Acidanthera\GoldenGate`。
+- 背景使用纯黑色（`DefaultBackgroundColor = 00000000`），已移除 `Background.icns` 背景图片。
+- `PickerAttributes` 保持 `17`，倒计时保持 `5` 秒。
+- `UEFI → Output → Resolution` 保持 `Max`。
+
+主题图标、字体和标签位于 `OC/Resources`。更新 OpenCore 时，应同时使用对应版本的 OpenCanopy。参考 [OpenCore 图形菜单教程](https://sumingyd.github.io/OpenCore-Post-Install/cosmetic/gui.html)。
+
+OpenCore 日志已关闭：`Misc → Debug` 中 `Target=0`、`AppleDebug=false`、`ApplePanic=false`、`SysReport=false`。
 
 ### NVIDIA 显卡
 
@@ -73,18 +88,39 @@ ALIB AC/DC: avoid reading a return value from void A026
 
 固件中的 `ALIB` 曾读取无返回值的 `A026()`，导致电源适配器 `_PSR` 查询反复触发 `AE_AML_NO_RETURN_VALUE`。补丁保留原有电源状态切换操作，修正返回值处理。
 
-## SMBIOS 身份信息
+## macOS 26 首次设置黑屏
 
-公开版已清理设备身份信息。使用前，请在准备部署到启动盘的副本中填写自己的值：
+机主安装 macOS 26 后，首次启动曾黑屏，无法完成设置助理（激活向导）；据机主排查，设置助理的背景动态壁纸崩溃。机主通过在 Recovery 中运行 [recovery-skip.sh](recovery-skip.sh) 跳过首次设置，之后成功进入系统。
 
-| `PlatformInfo → Generic` 字段 | 公开版占位值 | 使用前填写 |
-| --- | --- | --- |
-| `SystemSerialNumber` | 空字符串 | 自行生成的序列号 |
-| `MLB` | 空字符串 | 与序列号配套生成的主板序列号 |
-| `SystemUUID` | 空字符串 | 自行生成的 UUID |
-| `ROM` | 六个零字节 | 自己网卡的 MAC 地址，去掉分隔符后按六字节 Data 填写 |
+### 跳过激活向导脚本
 
-`SystemProductName` 保持 `MacBookPro16,2`。可使用 [GenSMBIOS](https://github.com/corpnewt/GenSMBIOS) 生成对应机型的身份信息，具体步骤参考 [Dortania iServices 指南](https://dortania.github.io/OpenCore-Post-Install/universal/iservices.html)。
+运行脚本，按编号选择数据卷，输入用户名和显示名称，核对目标后创建本地管理员并跳过首次设置。
+
+- 必须先启动安装好的 macOS 一次，在首次设置黑屏、卡住后，再进入 Recovery 执行脚本。
+- 目标数据卷需在 Recovery 中挂载并解锁，脚本会列出已生成本地账户数据库的数据卷。
+- 目标尚未完成首次设置；新建用户名、对应主目录和 UID `501` 均未被占用。
+
+脚本使用 UID `501` 创建管理员，主目录为 `/Users/所选用户名`。脚本会修改目标系统的本地账户数据库，执行前会显示目标摘要，输入 `YES` 后才开始写入。
+
+### 运行步骤
+
+1. 将 `recovery-skip.sh` 放到可在 Recovery 中访问的 U 盘根目录。
+2. 安装完成后，先启动安装好的 macOS，让系统进入首次设置并复现黑屏、卡住的情况，再重启进入 Recovery。
+3. 在 Recovery 的磁盘工具中挂载、解锁目标数据卷，然后打开「实用工具 → 终端」。
+4. 用 `ls /Volumes` 确认 U 盘卷名，然后运行以下命令，将示例中的 `你的U盘卷名` 替换为实际名称：
+
+   ```sh
+   sh "/Volumes/你的U盘卷名/recovery-skip.sh"
+   ```
+
+5. 按编号选择目标数据卷，输入用户名和显示名称。用户名以小写字母开头，只使用小写字母、数字、下划线和连字符；显示名称留空时使用用户名。
+6. 核对数据卷和账户摘要，输入 `YES` 继续；其他输入会取消且不写入。
+7. 按提示为新账户设置自己的非空登录密码，输入时不显示字符。
+8. 看到 `DONE` 后重启，选择安装好的 macOS，并使用刚创建的账户登录。
+
+若提示找不到已初始化的数据卷，先确认已按第 2 步启动过安装好的 macOS，再检查数据卷是否已挂载、解锁。
+
+脚本会备份原管理员组记录，创建账户和主目录，最后写入 `.AppleSetupDone`。若写入过程中出现 `STOP`，按上方具体错误检查当前账户状态；脚本不会自动回滚已完成的步骤。
 
 ## 使用
 
@@ -96,16 +132,17 @@ OC/
   ACPI/
   Drivers/
   Kexts/
+  Resources/
   OpenCore.efi
   config.plist
 README.md
+recovery-skip.sh
 ```
 
 1. 备份现有 EFI，保留可启动的恢复副本。
-2. 在准备部署的副本中填写上述 SMBIOS 身份信息。
-3. 将副本中的 `BOOT`、`OC` 放入启动盘的 `EFI` 目录，最终路径应为 `EFI/BOOT`、`EFI/OC`。
-4. 按 NullMoth 项目说明在 macOS 中安装 NVIDIA 驱动。
-5. 使用本机配置测试启动；其他机器或更换硬件后，需要重新核对 ACPI、USB 映射和设备配置。
+2. 将本目录中的 `BOOT`、`OC` 放入启动盘的 `EFI` 目录，最终路径应为 `EFI/BOOT`、`EFI/OC`。
+3. 按 NullMoth 项目说明在 macOS 中安装 NVIDIA 驱动。
+4. 使用本机配置测试启动；其他机器或更换硬件后，需要重新核对 ACPI、USB 映射和设备配置。
 
 ## 相关项目
 
